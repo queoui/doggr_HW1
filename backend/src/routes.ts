@@ -1,7 +1,9 @@
 import {FastifyInstance, FastifyReply, FastifyRequest} from "fastify";
 import { Match } from "./db/entities/Match.js";
+import {Message} from "./db/entities/Messages.js";
 import {User} from "./db/entities/User.js";
 import {ICreateUsersBody} from "./types.js";
+import fs from 'fs';
 
 async function DoggrRoutes(app: FastifyInstance, _options = {}) {
 	if (!app) {
@@ -89,8 +91,18 @@ async function DoggrRoutes(app: FastifyInstance, _options = {}) {
 	});
 	
 	// DELETE
-	app.delete<{ Body: {email}}>("/users", async(req, reply) => {
-		const { email } = req.body;
+	app.delete<{ Body: {email, admin, pass}}>("/users", async(req, reply) => {
+		const { email, admin, pass } = req.body;
+		
+		try {
+			if(admin !== process.env.ADMIN_USER || pass !== process.env.ADMIN_PASS){
+				throw new Error();
+			}
+		}catch(err){
+			console.error(err);
+			reply.status(401).send(err);
+			return;
+		}
 		
 		try {
 			const theUser = await req.em.findOne(User, { email });
@@ -130,6 +142,146 @@ async function DoggrRoutes(app: FastifyInstance, _options = {}) {
 		}
 
 	});
+	
+	
+	app.post<{Body: { sender: string, receiver:string , message: string }}>("/messages", async (req, reply) => {
+		const { sender, receiver, message} = req.body;
+		// read the file as a string
+		const data = fs.readFileSync( '/home/d/workspace/doggr_HW1/backend/src/badwords.txt', 'utf-8');
+		
+		// split the string by newlines to get an array of lines
+		const lines = data.split('\r\n');
+		
+		try{
+			for (const substring of lines) {
+				if (message.includes(substring)) {
+					throw new Error();
+				}
+			}
+
+		}catch(err){
+			console.error(err);
+			return reply.status(500).send("tsk tsk! naughty naughty! someone has a potty mouth!");
+		}
+		
+		try {
+			// make sure that the matchee exists & get their user account
+			const receiver_user = await req.em.findOne(User, { email: receiver });
+			// do the same for the matcher/owner
+			const sender_user = await req.em.findOne(User, { email: sender });
+			
+			//create a new match between them
+			const newMessage = await req.em.create(Message, {
+				sender_user,
+				receiver_user,
+				message
+			});
+			
+			//persist it to the database
+			await req.em.flush();
+			// send the match back to the user
+			return reply.send(newMessage);
+		} catch (err) {
+			console.error(err);
+			return reply.status(500).send(err);
+		}
+		
+	});
+	
+	app.search("/messages", async (req, reply) => {
+		const { email } = req.body;
+		
+		try {
+			const findUser = await req.em.findOne(User, { email });
+			const allMessages = await req.em.find(Message, {receiver_user_id: findUser.id});
+			reply.send(allMessages);
+			
+		} catch (err) {
+			console.error(err);
+			reply.status(500).send(err);
+		}
+	});
+	
+	app.search("/messages/sent", async (req, reply) => {
+		const { email } = req.body;
+		
+		try {
+			const findUser = await req.em.findOne(User, { email });
+			const allMessages = await req.em.find(Message, {sender_user_id: findUser.id});
+			reply.send(allMessages);
+			
+		} catch (err) {
+			console.error(err);
+			reply.status(500).send(err);
+		}
+	});
+	
+	app.put<{Body: {messageId: string, message: string}}>("/messages", async(req, reply) => {
+		const { messageId , message} = req.body;
+		
+		const messageToChange = await req.em.findOne(Message, {id: Number(messageId)});
+		messageToChange.message = message;
+		
+		await req.em.flush();
+		console.log(messageToChange);
+		reply.send(messageToChange);
+		
+	});
+	
+	app.delete<{ Body: {messageId: string, admin: string, pass: string}}>("/messages", async(req, reply) => {
+		const { messageId, admin, pass} = req.body;
+		
+		try {
+			if(admin !== process.env.ADMIN_USER || pass !== process.env.ADMIN_PASS){
+				throw new Error();
+			}
+		}catch(err){
+			console.error(err);
+			reply.status(401).send(err);
+			return;
+		}
+		
+		try {
+			const MessageToDelete = await req.em.findOne(Message, { id: Number(messageId) });
+			
+			await req.em.remove(MessageToDelete).flush();
+			console.log(MessageToDelete);
+			reply.send(MessageToDelete);
+		} catch (err) {
+			console.error(err);
+			reply.status(500).send(err);
+		}
+	});
+	
+	app.delete<{ Body: {email: string, admin:string, pass:string}}>("/messages/all", async(req, reply) => {
+		const { email, admin, pass } = req.body;
+		
+		try {
+			if(admin !== process.env.ADMIN_USER || pass !== process.env.ADMIN_PASS){
+				throw new Error();
+			}
+		}catch(err){
+			console.error(err);
+			reply.status(401).send(err);
+			return;
+		}
+		
+		try {
+			const findUser = await req.em.findOne(User, { email });
+			const MessageToDelete = await req.em.find(Message, {sender_user: findUser});
+			
+			await req.em.remove(MessageToDelete).flush();
+			console.log(MessageToDelete);
+			reply.send(MessageToDelete);
+		} catch (err) {
+			console.error(err);
+			
+			reply.status(500).send(err);
+		}
+	});
+	
+	
+	
 }
 
 export default DoggrRoutes;

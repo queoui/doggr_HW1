@@ -10,7 +10,7 @@ RUN pnpm install
 
 COPY . .
 EXPOSE 8080
-ENV ADDRESS=0.0.0.0 PORT=8080 DB_HOST=postgres DB_PORT=5432 DB_NAME=doggr DB_USER=doggr DB_PASS=doggr
+ENV ADDRESS=0.0.0.0 PORT=8080 DB_HOST=postgres DB_PORT=5432 DB_NAME=doggr DB_USER=doggr DB_PASS=doggr ADMIN_USER=admin ADMIN_PASS=pass
 
 RUN pnpm build
 
