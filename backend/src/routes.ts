@@ -105,7 +105,9 @@ async function DoggrRoutes(app: FastifyInstance, _options = {}) {
 		}
 		
 		try {
-			const theUser = await req.em.findOne(User, { email });
+			const theUser = await req.em.findOne(User, { email }, {
+				populate: ["matches", "matched_by", "sent_messages", "received_messages"]
+			});
 			
 			await req.em.remove(theUser).flush();
 			console.log(theUser);
